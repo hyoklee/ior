@@ -118,24 +118,21 @@ jobs:
       run: |
         cd netcdf-c
         export HDF5_DIR=$HOME/hdf5-install
-        export CPPFLAGS="-I$HOME/hdf5-install/include"
-        export LDFLAGS="-L$HOME/hdf5-install/lib"
         export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$LD_LIBRARY_PATH"
         export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$PKG_CONFIG_PATH"
 
-        # Bootstrap if needed
-        if [ ! -f configure ]; then
-          ./bootstrap
-        fi
-
-        # Configure with HDF5 support
-        ./configure \
-          --prefix=$HOME/netcdf4-install \
-          --enable-netcdf-4 \
-          --enable-shared \
-          --disable-dap \
-          --disable-libxml2 \
-          CC=mpicc
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_INSTALL_PREFIX=$HOME/netcdf4-install \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_COMPILER=mpicc \
+          -DENABLE_NETCDF_4=ON \
+          -DBUILD_SHARED_LIBS=ON \
+          -DENABLE_DAP=OFF \
+          -DENABLE_LIBXML2=OFF \
+          -DHDF5_DIR=$HOME/hdf5-install \
+          -DHDF5_ROOT=$HOME/hdf5-install
 
         make -j$(nproc)
         make install
