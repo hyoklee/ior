@@ -1,4 +1,4 @@
-name: IOR NetCDF-4 Benchmark
+name: IOR NetCDF-4 Serial Benchmark
 
 on:
   push:
@@ -6,12 +6,12 @@ on:
   pull_request:
     branches: [ main, master ]
   schedule:
-    # Run daily at 6 AM UTC
-    - cron: '0 6 * * *'
+    # Run daily at 7 AM UTC (1 hour after parallel version)
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
-  benchmark-netcdf4:
+  benchmark-netcdf4-serial:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +23,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          openmpi-bin openmpi-common libopenmpi-dev \
           python3-pip build-essential cmake \
           zlib1g-dev libcurl4-openssl-dev \
           autotools-dev autoconf automake libtool \
@@ -56,8 +55,8 @@ jobs:
         if git ls-remote --heads origin gh-pages >/dev/null 2>&1; then
           # Clone gh-pages branch to get previous hash
           git clone --single-branch --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages-temp || true
-          if [ -f gh-pages-temp/hdf5-hash.txt ]; then
-            PREV_HASH=$(cat gh-pages-temp/hdf5-hash.txt)
+          if [ -f gh-pages-temp/hdf5-hash-serial.txt ]; then
+            PREV_HASH=$(cat gh-pages-temp/hdf5-hash-serial.txt)
           fi
           rm -rf gh-pages-temp
         fi
@@ -77,8 +76,8 @@ jobs:
       id: cache-hdf5
       uses: actions/cache@v4
       with:
-        path: ~/hdf5-install
-        key: hdf5-${{ steps.hdf5-hash.outputs.hash }}-zlib-${{ runner.os }}
+        path: ~/hdf5-install-serial
+        key: hdf5-serial-${{ steps.hdf5-hash.outputs.hash }}-zlib-${{ runner.os }}
 
     - name: Build HDF5
       if: steps.cache-hdf5.outputs.cache-hit != 'true' && steps.check-hash.outputs.skip_tests != 'true'
@@ -87,10 +86,9 @@ jobs:
         mkdir build
         cd build
         cmake .. \
-          -DCMAKE_INSTALL_PREFIX=$HOME/hdf5-install \
+          -DCMAKE_INSTALL_PREFIX=$HOME/hdf5-install-serial \
           -DCMAKE_BUILD_TYPE=Release \
-          -DHDF5_ENABLE_PARALLEL=ON \
-          -DHDF5_ENABLE_SUBFILING_VFD=ON \
+          -DHDF5_ENABLE_PARALLEL=OFF \
           -DHDF5_ENABLE_ZLIB_SUPPORT=ON \
           -DHDF5_BUILD_TOOLS=OFF \
           -DHDF5_BUILD_EXAMPLES=OFF \
@@ -110,31 +108,29 @@ jobs:
       id: cache-netcdf4
       uses: actions/cache@v4
       with:
-        path: ~/netcdf4-install
-        key: netcdf4-${{ steps.hdf5-hash.outputs.hash }}-${{ runner.os }}
+        path: ~/netcdf4-install-serial
+        key: netcdf4-serial-${{ steps.hdf5-hash.outputs.hash }}-${{ runner.os }}
 
     - name: Build netCDF-4
       if: steps.cache-netcdf4.outputs.cache-hit != 'true' && steps.check-hash.outputs.skip_tests != 'true'
       run: |
         cd netcdf-c
-        export HDF5_DIR=$HOME/hdf5-install
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$LD_LIBRARY_PATH"
-        export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$PKG_CONFIG_PATH"
+        export HDF5_DIR=$HOME/hdf5-install-serial
+        export LD_LIBRARY_PATH="$HOME/hdf5-install-serial/lib:$LD_LIBRARY_PATH"
+        export PKG_CONFIG_PATH="$HOME/hdf5-install-serial/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         mkdir build
         cd build
         cmake .. \
-          -DCMAKE_INSTALL_PREFIX=$HOME/netcdf4-install \
+          -DCMAKE_INSTALL_PREFIX=$HOME/netcdf4-install-serial \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_C_COMPILER=mpicc \
           -DENABLE_NETCDF_4=ON \
-          -DENABLE_PARALLEL=ON \
-          -DENABLE_PARALLEL_TESTS=OFF \
+          -DENABLE_PARALLEL=OFF \
           -DBUILD_SHARED_LIBS=ON \
           -DENABLE_DAP=OFF \
           -DENABLE_LIBXML2=OFF \
-          -DHDF5_DIR=$HOME/hdf5-install \
-          -DHDF5_ROOT=$HOME/hdf5-install
+          -DHDF5_DIR=$HOME/hdf5-install-serial \
+          -DHDF5_ROOT=$HOME/hdf5-install-serial
 
         make -j$(nproc)
         make install
@@ -149,22 +145,21 @@ jobs:
     - name: Configure IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
       run: |
-        export HDF5_DIR=$HOME/hdf5-install
-        export NETCDF_DIR=$HOME/netcdf4-install
-        export CPPFLAGS="-I$HOME/hdf5-install/include -I$HOME/netcdf4-install/include"
-        export LDFLAGS="-L$HOME/hdf5-install/lib -L$HOME/netcdf4-install/lib"
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$HOME/netcdf4-install/lib:$LD_LIBRARY_PATH"
-        export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$HOME/netcdf4-install/lib/pkgconfig:$PKG_CONFIG_PATH"
+        export HDF5_DIR=$HOME/hdf5-install-serial
+        export NETCDF_DIR=$HOME/netcdf4-install-serial
+        export CPPFLAGS="-I$HOME/hdf5-install-serial/include -I$HOME/netcdf4-install-serial/include"
+        export LDFLAGS="-L$HOME/hdf5-install-serial/lib -L$HOME/netcdf4-install-serial/lib"
+        export LD_LIBRARY_PATH="$HOME/hdf5-install-serial/lib:$HOME/netcdf4-install-serial/lib:$LD_LIBRARY_PATH"
+        export PKG_CONFIG_PATH="$HOME/hdf5-install-serial/lib/pkgconfig:$HOME/netcdf4-install-serial/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         ./configure \
           --with-hdf5 \
-          --with-ncmpi \
-          CC=mpicc
+          --with-ncmpi
 
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
       run: |
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$HOME/netcdf4-install/lib:$LD_LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$HOME/hdf5-install-serial/lib:$HOME/netcdf4-install-serial/lib:$LD_LIBRARY_PATH"
         make -j$(nproc)
 
     - name: Create benchmark script
@@ -174,40 +169,46 @@ jobs:
         #!/bin/bash
         set -e
 
-        export HDF5_DIR=$HOME/hdf5-install
-        export NETCDF_DIR=$HOME/netcdf4-install
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$HOME/netcdf4-install/lib:$LD_LIBRARY_PATH"
+        export HDF5_DIR=$HOME/hdf5-install-serial
+        export NETCDF_DIR=$HOME/netcdf4-install-serial
+        export LD_LIBRARY_PATH="$HOME/hdf5-install-serial/lib:$HOME/netcdf4-install-serial/lib:$LD_LIBRARY_PATH"
 
         # Create test directory
         mkdir -p benchmark_results
         cd benchmark_results
 
-        echo "=== IOR NetCDF-4 Benchmark Results ===" | tee benchmark_output.txt
+        echo "=== IOR NetCDF-4 Serial Benchmark Results ===" | tee benchmark_output.txt
         echo "Timestamp: $(date)" | tee -a benchmark_output.txt
-        echo "HDF5 Version: $(strings $HOME/hdf5-install/lib/libhdf5.so | grep "HDF5 library version" | head -1)" | tee -a benchmark_output.txt
+        echo "HDF5 Version: $(strings $HOME/hdf5-install-serial/lib/libhdf5.so | grep "HDF5 library version" | head -1)" | tee -a benchmark_output.txt
+        echo "Mode: Serial (non-parallel)" | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        # Test 1: Small file test (1MB per process, 2 processes)
-        echo "=== Test 1: Small File Test (1MB per process, 2 processes) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NCMPI -t 1m -b 1m -s 1 -F -o test1.nc -e | tee -a benchmark_output.txt
+        # Test 1: Small file test (1MB)
+        echo "=== Test 1: Small File Test (1MB) ===" | tee -a benchmark_output.txt
+        ../src/ior -a NCMPI -t 1m -b 1m -s 1 -o test1.nc -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        # Test 2: Medium file test (10MB per process, 2 processes)
-        echo "=== Test 2: Medium File Test (10MB per process, 2 processes) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NCMPI -t 1m -b 10m -s 1 -F -o test2.nc -e | tee -a benchmark_output.txt
+        # Test 2: Medium file test (10MB)
+        echo "=== Test 2: Medium File Test (10MB) ===" | tee -a benchmark_output.txt
+        ../src/ior -a NCMPI -t 1m -b 10m -s 1 -o test2.nc -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        # Test 3: Collective I/O test
-        echo "=== Test 3: Collective I/O Test ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NCMPI -t 1m -b 5m -s 1 -c -o test3.nc -e | tee -a benchmark_output.txt
+        # Test 3: Large file test (50MB)
+        echo "=== Test 3: Large File Test (50MB) ===" | tee -a benchmark_output.txt
+        ../src/ior -a NCMPI -t 1m -b 50m -s 1 -o test3.nc -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 4: HDF5 backend comparison
         echo "=== Test 4: HDF5 Backend Test (for comparison) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a HDF5 -t 1m -b 5m -s 1 -o test4.h5 -e | tee -a benchmark_output.txt
+        ../src/ior -a HDF5 -t 1m -b 25m -s 1 -o test4.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        echo "=== Benchmark completed ===" | tee -a benchmark_output.txt
+        # Test 5: Multiple segments test
+        echo "=== Test 5: Multiple Segments Test (5x5MB) ===" | tee -a benchmark_output.txt
+        ../src/ior -a NCMPI -t 1m -b 5m -s 5 -o test5.nc -e | tee -a benchmark_output.txt
+        echo "" | tee -a benchmark_output.txt
+
+        echo "=== Serial benchmark completed ===" | tee -a benchmark_output.txt
         EOF
 
         chmod +x benchmark_script.sh
@@ -219,19 +220,19 @@ jobs:
     - name: Parse benchmark results
       if: steps.check-hash.outputs.skip_tests != 'true'
       run: |
-        python3 scripts/parse_ior_benchmark.py benchmark_results/benchmark_output.txt benchmark-results.json --verbose
+        python3 scripts/parse_ior_benchmark.py benchmark_results/benchmark_output.txt benchmark-results-serial.json --verbose
 
     - name: Store benchmark result
       if: steps.check-hash.outputs.skip_tests != 'true'
       uses: benchmark-action/github-action-benchmark@v1
       with:
-        name: IOR NetCDF-4 Performance
+        name: IOR NetCDF-4 Serial Performance
         tool: 'customBiggerIsBetter'
-        output-file-path: benchmark-results.json
+        output-file-path: benchmark-results-serial.json
         github-token: ${{ secrets.GITHUB_TOKEN }}
         auto-push: true
         gh-pages-branch: gh-pages
-        benchmark-data-dir-path: dev/bench
+        benchmark-data-dir-path: dev/bench-serial
 
     - name: Update HDF5 hash file
       if: steps.check-hash.outputs.skip_tests != 'true'
@@ -239,11 +240,11 @@ jobs:
         # Clone gh-pages to update hash file
         git clone --single-branch --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages-update || git clone --orphan gh-pages gh-pages-update
         cd gh-pages-update
-        echo "${{ steps.hdf5-hash.outputs.hash }}" > hdf5-hash.txt
+        echo "${{ steps.hdf5-hash.outputs.hash }}" > hdf5-hash-serial.txt
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add hdf5-hash.txt
-        git commit -m "update: HDF5 commit hash to ${{ steps.hdf5-hash.outputs.hash }}" || echo "No changes to commit"
+        git add hdf5-hash-serial.txt
+        git commit -m "update: HDF5 serial commit hash to ${{ steps.hdf5-hash.outputs.hash }}" || echo "No changes to commit"
         git push origin gh-pages || git push -u origin gh-pages
 
     - name: Skip message
@@ -256,9 +257,9 @@ jobs:
       uses: actions/upload-artifact@v4
       if: steps.check-hash.outputs.skip_tests != 'true'
       with:
-        name: benchmark-results
+        name: benchmark-results-serial
         path: |
           benchmark_results/benchmark_output.txt
-          benchmark-results.json
+          benchmark-results-serial.json
           benchmark_results/*.nc
           benchmark_results/*.h5
