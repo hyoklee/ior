@@ -26,9 +26,7 @@ jobs:
           python3-pip build-essential cmake \
           zlib1g-dev libcurl4-openssl-dev \
           autotools-dev autoconf automake libtool \
-          pkg-config
-        # Ensure no MPI packages are installed that could conflict
-        sudo apt-get remove -y openmpi-bin openmpi-common libopenmpi-dev || true
+          pkg-config openmpi-bin openmpi-common libopenmpi-dev
 
     - name: Install Python dependencies
       run: |
