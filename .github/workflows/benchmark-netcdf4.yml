@@ -26,6 +26,7 @@ jobs:
           openmpi-bin openmpi-common libopenmpi-dev \
           python3-pip build-essential cmake \
           zlib1g-dev libcurl4-openssl-dev \
+          libsz2 libsz-dev \
           autotools-dev autoconf automake libtool \
           pkg-config
 
@@ -78,7 +79,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/hdf5-install
-        key: hdf5-${{ steps.hdf5-hash.outputs.hash }}-${{ runner.os }}
+        key: hdf5-${{ steps.hdf5-hash.outputs.hash }}-zlib-szip-${{ runner.os }}
 
     - name: Build HDF5
       if: steps.cache-hdf5.outputs.cache-hit != 'true' && steps.check-hash.outputs.skip_tests != 'true'
@@ -91,6 +92,8 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DHDF5_ENABLE_PARALLEL=ON \
           -DHDF5_ENABLE_SUBFILING_VFD=ON \
+          -DHDF5_ENABLE_Z_LIB_SUPPORT=ON \
+          -DHDF5_ENABLE_SZIP_SUPPORT=ON \
           -DHDF5_BUILD_TOOLS=OFF \
           -DHDF5_BUILD_EXAMPLES=OFF \
           -DHDF5_BUILD_TESTS=OFF
