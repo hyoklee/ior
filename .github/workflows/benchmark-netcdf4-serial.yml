@@ -158,7 +158,7 @@ jobs:
 
         ./configure \
           --with-hdf5 \
-          --with-netcdf
+          --with-mpiio=no
 
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
