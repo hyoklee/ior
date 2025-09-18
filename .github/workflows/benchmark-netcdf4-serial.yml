@@ -27,6 +27,8 @@ jobs:
           zlib1g-dev libcurl4-openssl-dev \
           autotools-dev autoconf automake libtool \
           pkg-config
+        # Ensure no MPI packages are installed that could conflict
+        sudo apt-get remove -y openmpi-bin openmpi-common libopenmpi-dev || true
 
     - name: Install Python dependencies
       run: |
@@ -126,9 +128,11 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_NETCDF_4=ON \
           -DENABLE_PARALLEL=OFF \
+          -DENABLE_PARALLEL_TESTS=OFF \
           -DBUILD_SHARED_LIBS=ON \
           -DENABLE_DAP=OFF \
           -DENABLE_LIBXML2=OFF \
+          -DENABLE_NCZARR=OFF \
           -DHDF5_DIR=$HOME/hdf5-install-serial \
           -DHDF5_ROOT=$HOME/hdf5-install-serial
 
@@ -154,7 +158,7 @@ jobs:
 
         ./configure \
           --with-hdf5 \
-          --with-ncmpi
+          --with-netcdf
 
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'

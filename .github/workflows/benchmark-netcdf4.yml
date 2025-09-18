@@ -133,6 +133,7 @@ jobs:
           -DBUILD_SHARED_LIBS=ON \
           -DENABLE_DAP=OFF \
           -DENABLE_LIBXML2=OFF \
+          -DENABLE_NCZARR=OFF \
           -DHDF5_DIR=$HOME/hdf5-install \
           -DHDF5_ROOT=$HOME/hdf5-install
 
