@@ -26,7 +26,7 @@ jobs:
           python3-pip build-essential cmake \
           zlib1g-dev libcurl4-openssl-dev \
           autotools-dev autoconf automake libtool \
-          pkg-config openmpi-bin openmpi-common libopenmpi-dev
+          pkg-config
 
     - name: Install Python dependencies
       run: |
@@ -155,8 +155,7 @@ jobs:
         export PKG_CONFIG_PATH="$HOME/hdf5-install-serial/lib/pkgconfig:$HOME/netcdf4-install-serial/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         ./configure \
-          --with-hdf5 \
-          --with-mpiio=no
+          --with-hdf5
 
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
