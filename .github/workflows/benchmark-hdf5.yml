@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  benchmark-netcdf4-serial:
+  benchmark-hdf5-serial:
     runs-on: ubuntu-latest
 
     steps:
@@ -104,9 +104,8 @@ jobs:
         export LDFLAGS="-L$HOME/hdf5-install-serial/lib"
         export LD_LIBRARY_PATH="$HOME/hdf5-install-serial/lib:$LD_LIBRARY_PATH"
         export PKG_CONFIG_PATH="$HOME/hdf5-install-serial/lib/pkgconfig:$PKG_CONFIG_PATH"
-
-        ./configure \
-          --with-hdf5
+        ./bootstrap
+        ./configure --with-hdf5
 
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
