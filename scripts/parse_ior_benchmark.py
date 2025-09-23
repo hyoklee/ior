@@ -50,15 +50,22 @@ def parse_ior_output(filename):
             if desc_match:
                 test_name = f"Test {i}: {desc_match.group(1).strip()}"
 
-        # Look for performance results in various IOR output formats
-        # IOR can output results in different formats depending on version:
-        # - "Max Write: 123.45 MiB/sec"
-        # - "write   123.45 MiB/sec   ..."
-        # - Summary tables with performance data
+        # Look for performance results in IOR output format
+        # The current format uses a table with:
+        # access    bw(MiB/s)  IOPS       Latency(s)  ...
+        # write     159.92     188.71     0.005299    ...
+        # read      948.72     5128       0.000195    ...
 
+        # Pattern for table format with bw(MiB/s) column
+        write_matches = re.findall(r'^write\s+([\d.]+)\s+', section, re.MULTILINE | re.IGNORECASE)
+        read_matches = re.findall(r'^read\s+([\d.]+)\s+', section, re.MULTILINE | re.IGNORECASE)
+
+        # Fallback patterns for other formats
         # Pattern 1: Max Write/Read format
-        write_matches = re.findall(r'Max Write:\s+([\d.]+)\s+MiB/sec', section)
-        read_matches = re.findall(r'Max Read:\s+([\d.]+)\s+MiB/sec', section)
+        if not write_matches:
+            write_matches = re.findall(r'Max Write:\s+([\d.]+)\s+MiB/sec', section)
+        if not read_matches:
+            read_matches = re.findall(r'Max Read:\s+([\d.]+)\s+MiB/sec', section)
 
         # Pattern 2: Simple write/read format
         if not write_matches:
@@ -66,8 +73,7 @@ def parse_ior_output(filename):
         if not read_matches:
             read_matches = re.findall(r'\bread\s+([\d.]+)\s+MiB/sec', section, re.IGNORECASE)
 
-        # Pattern 3: Summary table format (common in newer IOR versions)
-        # Look for lines like: "write    1234.56     MB/sec    ..."
+        # Pattern 3: Summary table format (older versions)
         if not write_matches:
             table_write_matches = re.findall(r'write\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s+MB/sec', section, re.IGNORECASE)
             if table_write_matches:
@@ -96,11 +102,17 @@ def parse_ior_output(filename):
     if not results:
         print("No test sections found, trying to parse general performance data...")
 
-        # Try all patterns on the full content
-        all_write_matches = re.findall(r'(?:Max Write|write):\s+([\d.]+)\s+(?:MiB|MB)/sec', content, re.IGNORECASE)
-        all_read_matches = re.findall(r'(?:Max Read|read):\s+([\d.]+)\s+(?:MiB|MB)/sec', content, re.IGNORECASE)
+        # Try table format first (most common in current IOR versions)
+        all_write_matches = re.findall(r'^write\s+([\d.]+)\s+', content, re.MULTILINE | re.IGNORECASE)
+        all_read_matches = re.findall(r'^read\s+([\d.]+)\s+', content, re.MULTILINE | re.IGNORECASE)
 
-        # Also try table format
+        # Fallback to other patterns
+        if not all_write_matches:
+            all_write_matches = re.findall(r'(?:Max Write|write):\s+([\d.]+)\s+(?:MiB|MB)/sec', content, re.IGNORECASE)
+        if not all_read_matches:
+            all_read_matches = re.findall(r'(?:Max Read|read):\s+([\d.]+)\s+(?:MiB|MB)/sec', content, re.IGNORECASE)
+
+        # Also try older table format
         if not all_write_matches:
             all_write_matches = re.findall(r'write\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s+(?:MiB|MB)/sec', content, re.IGNORECASE)
         if not all_read_matches:
