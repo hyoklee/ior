@@ -16,35 +16,6 @@ window.BENCHMARK_DATA = {
             "username": "hyoklee"
           },
           "distinct": true,
-          "id": "9529b6c6490b109743882f9789ca27076ca352be",
-          "message": "ci: boostrap",
-          "timestamp": "2025-09-22T09:03:12-05:00",
-          "tree_id": "7c267bf6de1b03eefec50d11d1a93067ccc05c18",
-          "url": "https://github.com/hyoklee/ior/commit/9529b6c6490b109743882f9789ca27076ca352be"
-        },
-        "date": 1758550081172,
-        "tool": "customBiggerIsBetter",
-        "benches": [
-          {
-            "name": "No Results Found",
-            "value": 0,
-            "unit": "N/A"
-          }
-        ]
-      },
-      {
-        "commit": {
-          "author": {
-            "email": "hyoklee@hdfgroup.org",
-            "name": "H. Joe Lee",
-            "username": "hyoklee"
-          },
-          "committer": {
-            "email": "hyoklee@hdfgroup.org",
-            "name": "H. Joe Lee",
-            "username": "hyoklee"
-          },
-          "distinct": true,
           "id": "8d8067a21e1559f10c0e5518d361dfb018425349",
           "message": "fix: update IOR benchmark parser regex patterns\n\nUpdate parse_ior_benchmark.py to correctly parse the current IOR output\ntable format where bandwidth values are in the bw(MiB/s) column. The\nscript now successfully extracts performance data from all test sections.\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
           "timestamp": "2025-09-22T20:24:04-05:00",
