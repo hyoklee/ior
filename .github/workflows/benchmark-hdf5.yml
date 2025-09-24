@@ -3,9 +3,8 @@ name: IOR h5 Serial Benchmark
 on:
   push:
     branches: main
-#  schedule:
-    # Run daily at 7 AM UTC (1 hour after parallel version)
-#    - cron: '0 7 * * *'
+  schedule:
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
