@@ -2,12 +2,12 @@ name: IOR NetCDF-4 Serial Benchmark
 
 on:
   push:
-    branches: main-
+    branches: main
   pull_request:
-    branches: main-
-#  schedule:
+    branches: main
+  schedule:
     # Run daily at 7 AM UTC (1 hour after parallel version)
-#    - cron: '0 7 * * *'
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
@@ -125,13 +125,12 @@ jobs:
         cmake .. \
           -DCMAKE_INSTALL_PREFIX=$HOME/netcdf4-install-serial \
           -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_NETCDF_4=ON \
-          -DENABLE_PARALLEL=OFF \
-          -DENABLE_PARALLEL_TESTS=OFF \
+          -DNETCDF_ENABLE_HDF5=ON \          
+          -DNETCDF_ENABLE_PARALLEL_TESTS=OFF \          
           -DBUILD_SHARED_LIBS=ON \
-          -DENABLE_DAP=OFF \
-          -DENABLE_LIBXML2=OFF \
-          -DENABLE_NCZARR=OFF \
+          -DNETCDF_ENABLE_DAP=OFF \
+          -DNETCDF_ENABLE_LIBXML2=OFF \          
+          -DNETCDF_ENABLE_NCZARR_FILTERS=OFF \          
           -DHDF5_DIR=$HOME/hdf5-install-serial \
           -DHDF5_ROOT=$HOME/hdf5-install-serial
 
@@ -234,7 +233,7 @@ jobs:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         auto-push: true
         gh-pages-branch: gh-pages
-        benchmark-data-dir-path: dev/bench-serial
+        benchmark-data-dir-path: dev/bench-nc4-serial
 
     - name: Update HDF5 hash file
       if: steps.check-hash.outputs.skip_tests != 'true'
