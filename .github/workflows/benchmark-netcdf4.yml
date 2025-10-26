@@ -101,7 +101,7 @@ jobs:
       if: steps.check-hash.outputs.skip_tests != 'true'
       uses: actions/checkout@v4
       with:
-        repository: Unidata/netcdf-c
+        repository: hyoklee/netcdf-c
         ref: main
         path: netcdf-c
 
