@@ -156,8 +156,7 @@ jobs:
         export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$HOME/netcdf4-install/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         ./configure \
-          --with-hdf5=$HOME/hdf5-install \
-          --with-netcdf=$HOME/netcdf4-install \
+          --with-hdf5 \
           CC=mpicc
 
     - name: Build IOR
@@ -188,22 +187,22 @@ jobs:
 
         # Test 1: Small file test (1MB per process, 2 processes)
         echo "=== Test 1: Small File Test (1MB per process, 2 processes) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NetCDF -t 1m -b 1m -s 1 -F -o test1.nc -e | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a HDF5 -t 1m -b 1m -s 1 -F -o test1.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 2: Medium file test (10MB per process, 2 processes)
         echo "=== Test 2: Medium File Test (10MB per process, 2 processes) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NetCDF -t 1m -b 10m -s 1 -F -o test2.nc -e | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a HDF5 -t 1m -b 10m -s 1 -F -o test2.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 3: Collective I/O test
         echo "=== Test 3: Collective I/O Test ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NetCDF -t 1m -b 5m -s 1 -c -o test3.nc -e | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a HDF5 -t 1m -b 5m -s 1 -c -o test3.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        # Test 4: HDF5 backend comparison
-        echo "=== Test 4: HDF5 Backend Test (for comparison) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a HDF5 -t 1m -b 5m -s 1 -o test4.h5 -e | tee -a benchmark_output.txt
+        # Test 4: Larger collective test
+        echo "=== Test 4: Larger Collective Test ===" | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a HDF5 -t 1m -b 10m -s 2 -c -o test4.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         echo "=== Benchmark completed ===" | tee -a benchmark_output.txt
@@ -259,5 +258,4 @@ jobs:
         path: |
           benchmark_results/benchmark_output.txt
           benchmark-results.json
-          benchmark_results/*.nc
           benchmark_results/*.h5

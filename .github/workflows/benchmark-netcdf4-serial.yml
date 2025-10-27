@@ -155,8 +155,7 @@ jobs:
         export PKG_CONFIG_PATH="$HOME/hdf5-install-serial/lib/pkgconfig:$HOME/netcdf4-install-serial/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         ./configure \
-          --with-hdf5=$HOME/hdf5-install-serial \
-          --with-netcdf=$HOME/netcdf4-install-serial
+          --with-hdf5
 
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
@@ -187,27 +186,27 @@ jobs:
 
         # Test 1: Small file test (1MB)
         echo "=== Test 1: Small File Test (1MB) ===" | tee -a benchmark_output.txt
-        ../src/ior -a NetCDF -t 1m -b 1m -s 1 -o test1.nc -e | tee -a benchmark_output.txt
+        ../src/ior -a HDF5 -t 1m -b 1m -s 1 -o test1.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 2: Medium file test (10MB)
         echo "=== Test 2: Medium File Test (10MB) ===" | tee -a benchmark_output.txt
-        ../src/ior -a NetCDF -t 1m -b 10m -s 1 -o test2.nc -e | tee -a benchmark_output.txt
+        ../src/ior -a HDF5 -t 1m -b 10m -s 1 -o test2.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 3: Large file test (50MB)
         echo "=== Test 3: Large File Test (50MB) ===" | tee -a benchmark_output.txt
-        ../src/ior -a NetCDF -t 1m -b 50m -s 1 -o test3.nc -e | tee -a benchmark_output.txt
+        ../src/ior -a HDF5 -t 1m -b 50m -s 1 -o test3.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        # Test 4: HDF5 backend comparison
-        echo "=== Test 4: HDF5 Backend Test (for comparison) ===" | tee -a benchmark_output.txt
-        ../src/ior -a HDF5 -t 1m -b 25m -s 1 -o test4.h5 -e | tee -a benchmark_output.txt
+        # Test 4: Very large file test (100MB)
+        echo "=== Test 4: Very Large File Test (100MB) ===" | tee -a benchmark_output.txt
+        ../src/ior -a HDF5 -t 1m -b 100m -s 1 -o test4.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
-        # Test 5: Multiple segments test
+        # Test 5: Multiple segments test (5x5MB)
         echo "=== Test 5: Multiple Segments Test (5x5MB) ===" | tee -a benchmark_output.txt
-        ../src/ior -a NetCDF -t 1m -b 5m -s 5 -o test5.nc -e | tee -a benchmark_output.txt
+        ../src/ior -a HDF5 -t 1m -b 5m -s 5 -o test5.h5 -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         echo "=== Serial benchmark completed ===" | tee -a benchmark_output.txt
@@ -263,5 +262,4 @@ jobs:
         path: |
           benchmark_results/benchmark_output.txt
           benchmark-results-serial.json
-          benchmark_results/*.nc
           benchmark_results/*.h5
