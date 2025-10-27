@@ -1,4 +1,4 @@
-name: IOR h5 Serial Benchmark
+name: IOR HDF5 Serial Benchmark
 
 on:
   push:
