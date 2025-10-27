@@ -1,4 +1,4 @@
-name: IOR NetCDF-4 Benchmark
+name: IOR HDF5 Parallel Benchmark
 
 on:
   push:
@@ -97,47 +97,6 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Checkout netCDF-C
-      if: steps.check-hash.outputs.skip_tests != 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: hyoklee/netcdf-c
-        ref: main
-        path: netcdf-c
-
-    - name: Cache netCDF-4 build
-      id: cache-netcdf4
-      uses: actions/cache@v4
-      with:
-        path: ~/netcdf4-install
-        key: netcdf4-${{ steps.hdf5-hash.outputs.hash }}-${{ runner.os }}
-
-    - name: Build netCDF-4
-      if: steps.cache-netcdf4.outputs.cache-hit != 'true' && steps.check-hash.outputs.skip_tests != 'true'
-      run: |
-        cd netcdf-c
-        export HDF5_DIR=$HOME/hdf5-install
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$LD_LIBRARY_PATH"
-        export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$PKG_CONFIG_PATH"
-
-        mkdir build
-        cd build
-        cmake .. \
-          -DCMAKE_INSTALL_PREFIX=$HOME/netcdf4-install \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_C_COMPILER=mpicc \
-          -DNETCDF_ENABLE_HDF5=ON \
-          -DNETCDF_ENABLE_PARALLEL_TESTS=OFF \
-          -DBUILD_SHARED_LIBS=ON \
-          -DNETCDF_ENABLE_DAP=OFF \
-          -DNETCDF_ENABLE_LIBXML2=OFF \
-          -DNETCDF_ENABLE_NCZARR_FILTERS=OFF \
-          -DHDF5_DIR=$HOME/hdf5-install \
-          -DHDF5_ROOT=$HOME/hdf5-install
-
-        make -j$(nproc)
-        make install
-
     - name: Bootstrap IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
       run: |
@@ -149,11 +108,10 @@ jobs:
       if: steps.check-hash.outputs.skip_tests != 'true'
       run: |
         export HDF5_DIR=$HOME/hdf5-install
-        export NETCDF_DIR=$HOME/netcdf4-install
-        export CPPFLAGS="-I$HOME/hdf5-install/include -I$HOME/netcdf4-install/include"
-        export LDFLAGS="-L$HOME/hdf5-install/lib -L$HOME/netcdf4-install/lib"
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$HOME/netcdf4-install/lib:$LD_LIBRARY_PATH"
-        export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$HOME/netcdf4-install/lib/pkgconfig:$PKG_CONFIG_PATH"
+        export CPPFLAGS="-I$HOME/hdf5-install/include"
+        export LDFLAGS="-L$HOME/hdf5-install/lib"
+        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$LD_LIBRARY_PATH"
+        export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         ./configure \
           --with-hdf5 \
@@ -162,7 +120,7 @@ jobs:
     - name: Build IOR
       if: steps.check-hash.outputs.skip_tests != 'true'
       run: |
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$HOME/netcdf4-install/lib:$LD_LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$LD_LIBRARY_PATH"
         make -j$(nproc)
 
     - name: Create benchmark script
@@ -173,14 +131,13 @@ jobs:
         set -e
 
         export HDF5_DIR=$HOME/hdf5-install
-        export NETCDF_DIR=$HOME/netcdf4-install
-        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$HOME/netcdf4-install/lib:$LD_LIBRARY_PATH"
+        export LD_LIBRARY_PATH="$HOME/hdf5-install/lib:$LD_LIBRARY_PATH"
 
         # Create test directory
         mkdir -p benchmark_results
         cd benchmark_results
 
-        echo "=== IOR NetCDF-4 Benchmark Results ===" | tee benchmark_output.txt
+        echo "=== IOR HDF5 Parallel Benchmark Results ===" | tee benchmark_output.txt
         echo "Timestamp: $(date)" | tee -a benchmark_output.txt
         echo "HDF5 Version: $(strings $HOME/hdf5-install/lib/libhdf5.so | grep "HDF5 library version" | head -1)" | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
@@ -223,13 +180,13 @@ jobs:
       if: steps.check-hash.outputs.skip_tests != 'true'
       uses: benchmark-action/github-action-benchmark@v1
       with:
-        name: IOR NetCDF-4 Performance
+        name: IOR HDF5 Parallel Performance
         tool: 'customBiggerIsBetter'
         output-file-path: benchmark-results.json
         github-token: ${{ secrets.GITHUB_TOKEN }}
         auto-push: true
         gh-pages-branch: gh-pages
-        benchmark-data-dir-path: dev/bench-nc4
+        benchmark-data-dir-path: dev/bench-parallel
 
     - name: Update HDF5 hash file
       if: steps.check-hash.outputs.skip_tests != 'true'
