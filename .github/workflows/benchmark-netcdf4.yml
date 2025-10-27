@@ -156,8 +156,8 @@ jobs:
         export PKG_CONFIG_PATH="$HOME/hdf5-install/lib/pkgconfig:$HOME/netcdf4-install/lib/pkgconfig:$PKG_CONFIG_PATH"
 
         ./configure \
-          --with-hdf5 \
-          --with-ncmpi \
+          --with-hdf5=$HOME/hdf5-install \
+          --with-netcdf=$HOME/netcdf4-install \
           CC=mpicc
 
     - name: Build IOR
@@ -188,17 +188,17 @@ jobs:
 
         # Test 1: Small file test (1MB per process, 2 processes)
         echo "=== Test 1: Small File Test (1MB per process, 2 processes) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NCMPI -t 1m -b 1m -s 1 -F -o test1.nc -e | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a NetCDF -t 1m -b 1m -s 1 -F -o test1.nc -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 2: Medium file test (10MB per process, 2 processes)
         echo "=== Test 2: Medium File Test (10MB per process, 2 processes) ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NCMPI -t 1m -b 10m -s 1 -F -o test2.nc -e | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a NetCDF -t 1m -b 10m -s 1 -F -o test2.nc -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 3: Collective I/O test
         echo "=== Test 3: Collective I/O Test ===" | tee -a benchmark_output.txt
-        mpirun -np 2 ../src/ior -a NCMPI -t 1m -b 5m -s 1 -c -o test3.nc -e | tee -a benchmark_output.txt
+        mpirun -np 2 ../src/ior -a NetCDF -t 1m -b 5m -s 1 -c -o test3.nc -e | tee -a benchmark_output.txt
         echo "" | tee -a benchmark_output.txt
 
         # Test 4: HDF5 backend comparison
