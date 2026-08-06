@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785922619670,
+  "lastUpdate": 1786009167072,
   "repoUrl": "https://github.com/hyoklee/ior",
   "entries": {
     "IOR HDF5 Serial Performance": [
@@ -13125,6 +13125,78 @@ window.BENCHMARK_DATA = {
           {
             "name": "Test 5: Multiple Segments Test (5x5MB) - Read Throughput",
             "value": 6279.65,
+            "unit": "MiB/sec"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "H. Joe Lee",
+            "username": "hyoklee",
+            "email": "hyoklee@hdfgroup.org"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "2d9f6d6d7e34198548150000a4523de5ae09181c",
+          "message": "Merge branch 'hpc:main' into main",
+          "timestamp": "2026-08-03T21:38:39Z",
+          "url": "https://github.com/hyoklee/ior/commit/2d9f6d6d7e34198548150000a4523de5ae09181c"
+        },
+        "date": 1786009165816,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "Test 1: Small File Test (1MB) - Write Throughput",
+            "value": 59.28,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 1: Small File Test (1MB) - Read Throughput",
+            "value": 1300.16,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 2: Medium File Test (10MB) - Write Throughput",
+            "value": 176.88,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 2: Medium File Test (10MB) - Read Throughput",
+            "value": 6385.97,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 3: Large File Test (50MB) - Write Throughput",
+            "value": 138.66,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 3: Large File Test (50MB) - Read Throughput",
+            "value": 8434.49,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 4: HDF5 Backend Test (for comparison) - Write Throughput",
+            "value": 189.37,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 4: HDF5 Backend Test (for comparison) - Read Throughput",
+            "value": 7951.59,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 5: Multiple Segments Test (5x5MB) - Write Throughput",
+            "value": 202.03,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 5: Multiple Segments Test (5x5MB) - Read Throughput",
+            "value": 7814.7,
             "unit": "MiB/sec"
           }
         ]
