@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795099789166,
+  "lastUpdate": 1795100646145,
   "repoUrl": "https://github.com/hyoklee/ior",
   "entries": {
     "IOR HDF5 Parallel Performance": [
@@ -12963,6 +12963,70 @@ window.BENCHMARK_DATA = {
           {
             "name": "Test 4: Larger Collective Test - Read Throughput",
             "value": 13306.8,
+            "unit": "MiB/sec"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "hyoklee@hdfgroup.org",
+            "name": "H. Joe Lee",
+            "username": "hyoklee"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "57b0f7cdb6b99b99293bbef37ab95f408227db30",
+          "message": "Merge branch 'hpc:main' into main",
+          "timestamp": "2026-11-19T09:03:04-06:00",
+          "tree_id": "ca18aa56d692faac6aefee17094dd2f6d0e5b3f2",
+          "url": "https://github.com/hyoklee/ior/commit/57b0f7cdb6b99b99293bbef37ab95f408227db30"
+        },
+        "date": 1795100644688,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "Test 1: Small File Test (1MB per process, 2 processes) - Write Throughput",
+            "value": 335.06,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 1: Small File Test (1MB per process, 2 processes) - Read Throughput",
+            "value": 2949.58,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 2: Medium File Test (10MB per process, 2 processes) - Write Throughput",
+            "value": 212.52,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 2: Medium File Test (10MB per process, 2 processes) - Read Throughput",
+            "value": 14609.21,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 3: Collective I/O Test - Write Throughput",
+            "value": 339.94,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 3: Collective I/O Test - Read Throughput",
+            "value": 10868.89,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 4: Larger Collective Test - Write Throughput",
+            "value": 194.76,
+            "unit": "MiB/sec"
+          },
+          {
+            "name": "Test 4: Larger Collective Test - Read Throughput",
+            "value": 20262.34,
             "unit": "MiB/sec"
           }
         ]
