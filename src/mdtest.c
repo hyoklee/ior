@@ -741,7 +741,7 @@ void mdtest_read(int random, int dirs, const long dir_iter, char *path, rank_pro
 
         double start = GetTimeStamp();
         /* open file for reading */
-        aiori_fh = o.backend->open (item, O_RDONLY, o.backend_options);
+        aiori_fh = o.backend->open (item, IOR_RDONLY, o.backend_options);
         if (NULL == aiori_fh) {
             WARNF("unable to open file %s", item);
             continue;
@@ -1797,7 +1797,7 @@ void summarize_results(int iterations, mdtest_results_t * results) {
 
 /* Checks to see if the test setup is valid.  If it isn't, fail. */
 void md_validate_tests_rank0() {
-    if (((o.stone_wall_timer_seconds > 0) && (o.branch_factor > 1)) || ! o.barriers) {
+    if ((o.stone_wall_timer_seconds > 0) && ((o.branch_factor > 1) || ! o.barriers)) {
         FAIL( "Error, stone wall timer does only work with a branch factor <= 1 (current is %d) and with barriers\n", o.branch_factor);
     }
 
@@ -2359,7 +2359,7 @@ mdtest_results_t * mdtest_run(int argc, char **argv, MPI_Comm world_com, FILE * 
       {0, "dataPacketType", "type of packet that will be created [offset|incompressible|timestamp|random|o|i|t|r]", OPTION_OPTIONAL_ARGUMENT, 's', & packetType},
       {0, "run-cmd-before-phase", "call this external command before each phase (excluded from the timing)", OPTION_OPTIONAL_ARGUMENT, 's', & o.prologue},
       {0, "run-cmd-after-phase",  "call this external command after each phase (included in the timing)", OPTION_OPTIONAL_ARGUMENT, 's', & o.epilogue},
-#ifdef HAVE_CUDA
+#ifdef HAVE_GPU
       {0, "allocateBufferOnGPU", "Allocate I/O buffers on the GPU: X=1 uses managed memory - verifications are run on CPU; X=2 managed memory - verifications on GPU; X=3 device memory with verifications on GPU.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.gpuMemoryFlags},
       {0, "GPUid", "Select the GPU to use, use -1 for round-robin among local procs.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.gpuID},
 #ifdef HAVE_GPU_DIRECT
@@ -2478,7 +2478,7 @@ mdtest_results_t * mdtest_run(int argc, char **argv, MPI_Comm world_com, FILE * 
     int tasksBlockMapping = QueryNodeMapping(testComm, true);
 
     if(o.gpuMemoryFlags != IOR_MEMORY_TYPE_CPU){
-       initCUDA(tasksBlockMapping, rank, numNodes, numTasksOnNode0, o.gpuID);
+       initGPU(tasksBlockMapping, rank, numNodes, numTasksOnNode0, o.gpuID);
     }
 
     /* setup total number of items and number of items per dir */

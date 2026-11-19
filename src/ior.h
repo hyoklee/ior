@@ -32,6 +32,7 @@
 #include "option.h"
 #include "iordef.h"
 #include "aiori.h"
+#include "utilities-rand.h"
 
 #include <mpi.h>
 
@@ -135,6 +136,7 @@ typedef struct
     int randomSeed;                  /* random seed for write/read check */
     unsigned int incompressibleSeed; /* random seed for incompressible file creation */
     int randomOffset;                /* access is to random offsets */
+    uint64_t memoryAlign;            /* alignment of I/O buffers, 0 = page size */
     size_t memoryPerTask;            /* additional memory used per task */
     size_t memoryPerNode;            /* additional memory used per node */
     char * memoryPerNodeStr;         /* for parsing */
@@ -154,13 +156,15 @@ typedef struct
     int id;                          /* test's unique ID */
     int intraTestBarriers;           /* barriers between open/op and op/close */
     int warningAsErrors;             /* treat any warning as an error */
-
+    LFSRRange * random_range;        /* If LFSR is used */
     aiori_xfer_hint_t hints;
 } IOR_param_t;
 
 /* each pointer for a single test */
 typedef struct {
    double time;
+   double accessTime;
+   int completed; /* operation completed with measurable data */
    size_t pairs_accessed; // number of I/Os done, useful for deadlineForStonewalling
 
    double     stonewall_time;

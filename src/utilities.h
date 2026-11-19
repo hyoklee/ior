@@ -48,7 +48,7 @@ int verify_memory_pattern(uint64_t item, char * buffer, size_t bytes, int rand_s
 int verify_memory_pattern_gpu(uint64_t item, char * buffer, size_t bytes, int rand_seed, int pretendRank, ior_dataPacketType_e dataPacketType);
 
 void PrintKeyVal(char * key, char * value);
-void initCUDA(int blockMapping, int rank, int numNodes, int tasksPerNode, int useGPUID);
+void initGPU(int blockMapping, int rank, int numNodes, int tasksPerNode, int useGPUID);
 char *CurrentTimeString(void);
 int Regex(char *, char *);
 void ShowFileSystemSize(char * filename, const struct ior_aiori * backend, void * backend_options);
@@ -78,6 +78,7 @@ void init_clock(MPI_Comm com);
 double GetTimeStamp(void);
 char * PrintTimestamp(void); // TODO remove this function
 unsigned long GetProcessorAndCore(int *chip, int *core);
+void aligned_buffer_set_alignment(size_t alignment);
 void *aligned_buffer_alloc(size_t size, ior_memory_flags type);
 void aligned_buffer_free(void *buf, ior_memory_flags type);
 

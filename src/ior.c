@@ -33,8 +33,8 @@
 # include <sys/utsname.h>        /* uname() */
 #endif
 
-#ifdef HAVE_CUDA
-#include <cuda_runtime.h>
+#ifdef HAVE_GPU
+#include "gpu_runtime.h"
 #endif
 
 #include <assert.h>
@@ -43,6 +43,7 @@
 #include "ior-internal.h"
 #include "aiori.h"
 #include "utilities.h"
+#include "utilities-rand.h"
 #include "parse_options.h"
 
 enum {
@@ -84,6 +85,9 @@ static void ior_set_xfer_hints(IOR_param_t * p){
   hints->transferSize = p->transferSize;
   hints->expectedAggFileSize = p->expectedAggFileSize;
   hints->singleXferAttempt = p->singleXferAttempt;
+  hints->dataPacketType = p->dataPacketType;
+  hints->deadlineForStonewalling = p->deadlineForStonewalling;
+  hints->maxTransferPairs = p->stoneWallingWearOutIterations;
 
   if(backend->xfer_hints){
     backend->xfer_hints(hints);
@@ -126,7 +130,7 @@ static int test_initialize(IOR_test_t * test){
   backend = test->params.backend;
 
   if(test->params.gpuMemoryFlags != IOR_MEMORY_TYPE_CPU){
-    initCUDA(test->params.tasksBlockMapping, rank, test->params.numNodes, test->params.numTasksOnNode0, test->params.gpuID);
+    initGPU(test->params.tasksBlockMapping, rank, test->params.numNodes, test->params.numTasksOnNode0, test->params.gpuID);
   }
   
 
@@ -393,9 +397,12 @@ static void CheckFileSize(IOR_test_t *test, char * testFilename, IOR_offset_t da
 
         if (strcasecmp(params->api, "HDF5") != 0 && strcasecmp(params->api, "NCMPI") != 0) {
                 if (verbose >= VERBOSE_0 && rank == 0) {
+                        // random reads of a shared file by all tasks can move more data than its size
+                        int checkStat = !(access == READ && params->randomOffset > 1 &&
+                                          params->hints.filePerProc == FALSE);
                         if ((params->expectedAggFileSize
                              != point->aggFileSizeFromXfer)
-                            || (point->aggFileSizeFromStat
+                            || (checkStat && point->aggFileSizeFromStat
                                 != point->aggFileSizeFromXfer)) {
                                 WARNF("Expected aggregate file size       = %lld", (long long) params->expectedAggFileSize);
                                 WARNF("Stat() of aggregate file size      = %lld", (long long) point->aggFileSizeFromStat);
@@ -434,7 +441,6 @@ static int CountErrors(IOR_param_t * test, int access, int errors)
                 MPI_CHECK(MPI_Bcast(&allErrors, 1, MPI_INT, 0, testComm),
                           "cannot broadcast allErrors value");
                 if (allErrors != 0) {
-                        totalErrorCount += allErrors;
                         test->errorFound = TRUE;
                 }
                 if (rank == 0 && allErrors != 0) {
@@ -773,6 +779,9 @@ ReduceIterResults(IOR_test_t *test, double *timer, const int rep, const int acce
                                                  &test->results[rep].read;
 
         point->time = totalTime;
+        point->accessTime = accessTime;
+        point->completed = point->aggFileSizeForBW > 0 &&
+                           isfinite(totalTime) && totalTime > 0.0;
 
         if (verbose < VERBOSE_0)
                 return;
@@ -890,8 +899,7 @@ static void InitTests(IOR_test_t *tests)
                 }
 
                 params->tasksBlockMapping = QueryNodeMapping(com,false);
-                params->expectedAggFileSize =
-                  params->blockSize * params->segmentCount * params->numTasks;
+                params->expectedAggFileSize =params->blockSize * params->segmentCount * params->numTasks;
 
                 ValidateTests(&tests->params, com);
                 tests = tests->next;
@@ -906,6 +914,7 @@ static void InitTests(IOR_test_t *tests)
 static void XferBuffersSetup(IOR_io_buffers* ioBuffers, IOR_param_t* test,
                              int pretendRank)
 {
+        aligned_buffer_set_alignment((size_t) test->memoryAlign);
         ioBuffers->buffer = aligned_buffer_alloc(test->transferSize, test->gpuMemoryFlags);
 }
 
@@ -1331,6 +1340,7 @@ static void TestIoSys(IOR_test_t *test)
                             WARN("Could not read back the stonewalling status from the file!");
                             params->stoneWallingWearOutIterations = 0;
                           }
+                          ior_set_xfer_hints(params);
                         }
                         int operation_flag = READ;
                         if ( params->checkRead ){
@@ -1401,6 +1411,15 @@ static void TestIoSys(IOR_test_t *test)
                         GetTestFileName(testFileName, params);
                         if(params->randomOffset > 1){
                           params->fileSizeForRead = backend->get_file_size(params->backend_options, testFileName);
+                          if(params->randomOffset == 3 && params->segmentCount == -1){
+                            // set maximum number of operations in this case to not exceed the LSFR
+                            params->segmentCount = params->fileSizeForRead / params->blockSize;
+                          }
+                          // each task reads segmentCount blocks, possibly of a different file size
+                          IOR_offset_t taskReadSize = params->segmentCount * params->blockSize;
+                          MPI_CHECK(MPI_Allreduce(&taskReadSize, &params->expectedAggFileSize, 1,
+                                                  MPI_LONG_LONG_INT, MPI_SUM, testComm),
+                                    "cannot reduce expected read size");
                         }
 
                         if (verbose >= VERBOSE_3) {
@@ -1478,6 +1497,15 @@ static void ValidateTests(IOR_param_t * test, MPI_Comm com)
         IOR_param_t defaults;
         init_IOR_Param_t(&defaults, com);
 
+        if (test->memoryAlign != 0) {
+          uint64_t pageSize = (uint64_t) sysconf(_SC_PAGESIZE);
+          if (test->memoryAlign & (test->memoryAlign - 1))
+            ERR("memoryAlign must be a power of two");
+          if (test->memoryAlign < pageSize)
+            ERR("memoryAlign must be at least the system page size");
+          if (test->memoryAlign > (uint64_t) 1 << 30)
+            ERR("memoryAlign is unreasonably large (> 1g)");
+        }
         if (test->gpuDirect && test->gpuMemoryFlags == IOR_MEMORY_TYPE_CPU )
           ERR("GPUDirect requires a non-CPU memory type");
         if (test->gpuMemoryFlags == IOR_MEMORY_TYPE_GPU_DEVICE_ONLY && ! test->gpuDirect )
@@ -1503,8 +1531,11 @@ static void ValidateTests(IOR_param_t * test, MPI_Comm com)
                 ERR("test must write, read, or check read/write file");
         if(! test->setTimeStampSignature && test->writeFile != TRUE && test->checkRead == TRUE)
                 ERR("using readCheck only requires to write a timeStampSignature -- use -G");
-        if (test->segmentCount < 0)
-                ERR("segment count must be positive value");
+        if (test->segmentCount < 0){
+                if(! (test->randomOffset == 3 && test->segmentCount == -1)){
+                        ERR("segment count must be positive value");
+                }
+        }
         if ((test->blockSize % sizeof(IOR_size_t)) != 0)
                 ERR("block size must be a multiple of access size");
         if (test->blockSize < 0)
@@ -1778,10 +1809,12 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
         }else{
           offsets = (test->blockSize / test->transferSize);
         }
-        if (test->randomOffset > 1){
+        if (test->randomOffset == 2){
           int seed = init_random_seed(test, pretendRank);
           srand(seed + pretendRank);
           srand64(((uint64_t) seed) * (pretendRank + 1));
+        }else if (test->randomOffset == 3){
+          test->random_range = u_lfsr_range_init(test->fileSizeForRead / test->blockSize, pretendRank + 1);
         }
 
         void * randomPrefillBuffer = NULL;
@@ -1801,6 +1834,15 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
         // start timer after random offset was generated        
         startForStonewall = GetTimeStamp();
         hitStonewall = 0;
+        /* MPI file views are collective even for independent transfers, so all
+         * ranks must leave a split strided transfer at the same boundary. */
+        int deadlineApplies = test->deadlineForStonewalling != 0;
+        int synchronizedTransferBoundaries = test->collective;
+        if (strcasecmp(test->api, "MPIIO") == 0 && test->backend_options != NULL) {
+                mpiio_options_t *mo = (mpiio_options_t *) test->backend_options;
+                if (mo->useFileView && mo->useStridedDatatype)
+                        synchronizedTransferBoundaries = 1;
+        }
 
         if(randomPrefillBuffer && test->deadlineForStonewalling == 0){
           double t_start = GetTimeStamp();
@@ -1823,7 +1865,7 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
                 fprintf(out_logfile, "Random: synchronizing segment count with barrier and prefill took: %fs\n", GetTimeStamp() - t_start);
               }
             }
-            if (test->randomOffset > 1){
+            if (test->randomOffset == 2){
                 size_t sizerand = test->fileSizeForRead; 
                 //if(test->filePerProc){
                 //  sizerand /= test->numTasks;
@@ -1844,8 +1886,10 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
                 }else{
                   offset = offsets_rnd[j] + (i * test->numTasks * test->blockSize);
                 }
-              }else if (test->randomOffset > 1){
+              }else if (test->randomOffset == 2){
                 offset += test->transferSize;
+              }else if (test->randomOffset == 3){
+                offset = u_lfsr_range_step (test->random_range) * test->blockSize;
               }else{
                 offset = j * test->transferSize;
                 if (test->filePerProc) {
@@ -1857,11 +1901,11 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
               dataMoved += WriteOrReadSingle(offset, pretendRank, test->transferSize, & errors, test, fd, ioBuffers, access, ot, startForStonewall);
               pairCnt++;
 
-              hitStonewall = ((test->deadlineForStonewalling != 0
+              hitStonewall = ((deadlineApplies
                   && (GetTimeStamp() - startForStonewall) > test->deadlineForStonewalling))
                   || (test->stoneWallingWearOutIterations != 0 && pairCnt == test->stoneWallingWearOutIterations) ;
 
-              if ( test->collective && test->deadlineForStonewalling ) {
+              if ( synchronizedTransferBoundaries && test->deadlineForStonewalling ) {
                 // if collective-mode, you'll get a HANG, if some rank 'accidentally' leave this loop
                 // it absolutely must be an 'all or none':
                 MPI_CHECK(MPI_Bcast(&hitStonewall, 1, MPI_INT, 0, testComm), "hitStonewall broadcast failed");
@@ -1902,7 +1946,7 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
             for ( ; pairCnt < point->pairs_accessed; i++) {
               IOR_offset_t offset;
               if(i == test->segmentCount) i = 0; // wrap over, necessary to deal with minTimeDuration
-              if (test->randomOffset > 1){
+              if (test->randomOffset == 2){
                   size_t sizerand = test->fileSizeForRead; 
                   if(test->filePerProc){
                     sizerand /= test->numTasks;
@@ -1916,8 +1960,10 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
                   }else{
                     offset = offsets_rnd[j] + (i * test->numTasks * test->blockSize);
                   }
-                }else if (test->randomOffset > 1){
+                }else if (test->randomOffset == 2){
                   offset += test->transferSize;
+                }else if (test->randomOffset == 3){
+                  offset = u_lfsr_range_step (test->random_range) * test->blockSize;
                 }else{
                   offset = j * test->transferSize;
                   if (test->filePerProc) {
@@ -1944,6 +1990,10 @@ static IOR_offset_t WriteOrRead(IOR_param_t *test, int rep, IOR_results_t *resul
         }
         if(randomPrefillBuffer){
           aligned_buffer_free(randomPrefillBuffer, test->gpuMemoryFlags);
+        }
+        if(test->random_range){
+          u_lfsr_range_free(test->random_range);
+          test->random_range = NULL;
         }
 
         return (dataMoved);

@@ -14,9 +14,25 @@ IOR 2 -a DUMMY -w -O stoneWallingStatusFile=stonewall.log -O stoneWallingWearOut
 IOR 2 -a DUMMY -r -O stoneWallingStatusFile=stonewall.log -D 1 -t 1000 -b 1000 -s 30 -k # max 15 still!
 IOR 2 -a DUMMY -r -O stoneWallingStatusFile=stonewall.log -t 1000 -b 1000 -s 30 -k
 
+bash "$ROOT/mpiio-strided-stonewall-tests.sh" || ERRORS=$(($ERRORS + 1))
+
 MDTEST 2 -I 20 -a DUMMY -W 1 -x stonewall-md.log -C
 MDTEST 2 -I 20 -a DUMMY -x stonewall-md.log -T -v
 MDTEST 2 -I 20 -a DUMMY -x stonewall-md.log -D -v
+
+# Regression: disabling phase barriers without stonewalling is valid.
+MDTEST 2 -a DUMMY -F -B 1 -n 4
+
+# Stonewalling still requires barriers, so -W and -B must fail.
+WHAT="${IOR_MPIRUN} 2 ${IOR_BIN_DIR}/mdtest -a DUMMY -F -B 1 -W 5 -n 4 -d ${IOR_TMP}/mdest ${MDTEST_EXTRA}"
+$WHAT 1>"${IOR_OUT}/test_out.$I" 2>&1
+if [[ $? == 0 ]]; then
+  echo "ERR  -W with -B should have been rejected but succeeded: $WHAT"
+  ERRORS=$(($ERRORS + 1))
+else
+  echo "OK (expected failure)  $WHAT"
+fi
+I=$((${I}+1))
 
 #shared tests
 IOR 2 -a POSIX -w -z -Y -e -i1 -m -t 100k -b 200k

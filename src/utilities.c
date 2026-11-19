@@ -17,14 +17,9 @@
 #endif
 
 #ifdef HAVE_GETCPU_SYSCALL
-#  define _GNU_SOURCE
 #  include <unistd.h>
 #  include <sys/syscall.h>
 #endif
-
-#ifdef __linux__
-#  define _GNU_SOURCE            /* Needed for O_DIRECT in fcntl */
-#endif                           /* __linux__ */
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -37,8 +32,12 @@
 #include <sys/types.h>
 #include <time.h>
 
-#ifdef HAVE_CUDA
-#include <cuda_runtime.h>
+#ifdef __linux__
+#  include <sys/mman.h>          /* madvise() */
+#endif
+
+#ifdef HAVE_GPU
+#include "gpu_runtime.h"
 #endif
 
 #ifndef _WIN32
@@ -95,7 +94,7 @@ void update_write_memory_pattern(uint64_t item, char * buf, size_t bytes, int ra
   if (dataPacketType == DATA_TIMESTAMP || bytes < 8)
     return;
 
-#ifdef HAVE_GPU_DIRECT
+#ifdef HAVE_GPU
   if(type == IOR_MEMORY_TYPE_GPU_DEVICE_ONLY || type == IOR_MEMORY_TYPE_GPU_MANAGED_CHECK_GPU){
     update_write_memory_pattern_gpu(item, buf, bytes, rand_seed,  pretendRank, dataPacketType);
     return;
@@ -159,7 +158,7 @@ uint64_t rand64(void) {
  * @param dataPacketType identifier to designate pattern to fill buffer
  */
 void generate_memory_pattern(char * buf, size_t bytes, int rand_seed, int pretendRank, ior_dataPacketType_e dataPacketType, ior_memory_flags type){
-#ifdef HAVE_GPU_DIRECT
+#ifdef HAVE_GPU
   if(type == IOR_MEMORY_TYPE_GPU_DEVICE_ONLY || type == IOR_MEMORY_TYPE_GPU_MANAGED_CHECK_GPU){
     generate_memory_pattern_gpu(buf, bytes, rand_seed,  pretendRank, dataPacketType);
     return;
@@ -187,7 +186,7 @@ void generate_memory_pattern(char * buf, size_t bytes, int rand_seed, int preten
       }
     }
   }
-  
+
   for(size_t i=size*8; i < bytes; i++){
     buf[i] = (char) i;
   }
@@ -195,35 +194,39 @@ void generate_memory_pattern(char * buf, size_t bytes, int rand_seed, int preten
 
 void invalidate_buffer_pattern(char * buffer, size_t bytes, ior_memory_flags type){
   if(type == IOR_MEMORY_TYPE_GPU_DEVICE_ONLY || type == IOR_MEMORY_TYPE_GPU_MANAGED_CHECK_GPU){
-#ifdef HAVE_GPU_DIRECT
-    cudaMemset(buffer, 0x42, bytes > 512 ? 512 : bytes);
+#ifdef HAVE_GPU
+    gpu_runtime_memset(buffer, 0x42, bytes > 512 ? 512 : bytes);
 #endif
   }else{
     buffer[0] = ~buffer[0]; // changes the buffer, no memset to reduce the memory pressure
   }
 }
 
-int verify_memory_pattern(uint64_t item, char * buffer, size_t bytes, int rand_seed, int pretendRank, ior_dataPacketType_e dataPacketType, ior_memory_flags type){  
+int verify_memory_pattern(uint64_t item, char * buffer, size_t bytes, int rand_seed, int pretendRank, ior_dataPacketType_e dataPacketType, ior_memory_flags type){
   int error = 0;
-#ifdef HAVE_GPU_DIRECT
+#ifdef HAVE_GPU
   if(type == IOR_MEMORY_TYPE_GPU_DEVICE_ONLY || type == IOR_MEMORY_TYPE_GPU_MANAGED_CHECK_GPU){
     error = verify_memory_pattern_gpu(item, buffer, bytes, rand_seed, pretendRank, dataPacketType);
+    if (error < 0) {
+      ERR("GPU verification could not run: runtime failure or unsupported packet type/size");
+      return 1;
+    }
     return error;
   }
 #endif
   // always read all data to ensure that performance numbers stay the same
   uint64_t * buffi = (uint64_t*) buffer;
-    
+
   // the first 8 bytes are set to item number
-  int k=1;  
-  
+  int k=1;
+
   uint64_t rand_state_local;
   unsigned seed = rand_seed + pretendRank + item;
   rand_state_local = rand_r(&seed);
   const size_t size = bytes / 8;
   for(size_t i=0; i < size; i++){
     uint64_t exp;
-        
+
     switch(dataPacketType){
       case(DATA_RANDOM):
         rand_state_local *= RANDALGO_GOLDEN_RATIO_PRIME;
@@ -255,7 +258,7 @@ int verify_memory_pattern(uint64_t item, char * buffer, size_t bytes, int rand_s
       error = 1;
     }
   }
-  
+
   return error;
 }
 
@@ -295,7 +298,7 @@ OpTimer* OpTimerInit(char * filename, int size){
 void OpTimerFlush(OpTimer* ot){
   if(ot == NULL) {
     return;
-  }  
+  }
   for(int i=0; i < ot->pos; i++){
     fprintf(ot->fd, "%.8e,%.8e,%e\n", ot->time[i], ot->value[i], ot->size/ot->value[i]);
   }
@@ -305,7 +308,7 @@ void OpTimerFlush(OpTimer* ot){
 void OpTimerValue(OpTimer* ot, double now, double runTime){
   if(ot == NULL) {
     return;
-  }  
+  }
   ot->time[ot->pos] = now;
   ot->value[ot->pos++] = runTime;
   if(ot->pos == OP_BUFFER_SIZE){
@@ -528,18 +531,14 @@ int QueryNodeMapping(MPI_Comm comm, int print_nodemap) {
     return ret;
 }
 
-void initCUDA(int blockMapping, int rank, int numNodes, int tasksPerNode, int useGPUID){  
-#ifdef HAVE_CUDA
+void initGPU(int blockMapping, int rank, int numNodes, int tasksPerNode, int useGPUID){
+#ifdef HAVE_GPU
   int device_count;
-  cudaError_t cret = cudaGetDeviceCount(& device_count);
-  if(cret != cudaSuccess){
-    ERRF("cudaGetDeviceCount() error: %d %s", (int) cret, cudaGetErrorString(cret));
-  }  
-  //if (rank == 0){
-  //      char val[20];
-  //      sprintf(val, "%d", device_count);
-  //      PrintKeyVal("cudaDevices", val);
-  //}
+  gpu_runtime_status_t st = gpu_runtime_get_device_count(& device_count);
+  if(! gpu_runtime_ok(st)){
+    ERRF("gpu_runtime_get_device_count() error: %s",
+         gpu_runtime_strerror(st));
+  }
   // if set to -1 use round robin per task
   if(useGPUID == -1){
      int device = 0;
@@ -548,12 +547,13 @@ void initCUDA(int blockMapping, int rank, int numNodes, int tasksPerNode, int us
      }else{
         device = (rank / numNodes) % device_count;
      }
-     cret = cudaSetDevice(device);
+     st = gpu_runtime_set_device(device);
   }else{
-     cret = cudaSetDevice(useGPUID);
-  }  
-  if(cret != cudaSuccess){
-    WARNF("cudaSetDevice(%d) error: %s", useGPUID, cudaGetErrorString(cret));
+     st = gpu_runtime_set_device(useGPUID);
+  }
+  if(! gpu_runtime_ok(st)){
+    WARNF("gpu_runtime_set_device(%d) error: %s", useGPUID,
+          gpu_runtime_strerror(st));
   }
 #endif
 }
@@ -1157,6 +1157,21 @@ unsigned long GetProcessorAndCore(int *chip, int *core){
 
 
 
+/* Alignment applied to I/O buffers; 0 means the system page size, which is
+   all O_DIRECT requires.  See aligned_buffer_set_alignment(). */
+static size_t memoryAlignment = 0;
+
+/*
+ * Set the alignment used by aligned_buffer_alloc() for subsequent
+ * allocations.  A value of 0 restores the default (the system page size).
+ * Must be a power of two and at least the page size; the caller is
+ * responsible for validating that.
+ */
+void aligned_buffer_set_alignment(size_t alignment)
+{
+  memoryAlignment = alignment;
+}
+
 /*
  * Allocate a page-aligned (required by O_DIRECT) buffer.
  */
@@ -1167,37 +1182,57 @@ void *aligned_buffer_alloc(size_t size, ior_memory_flags type)
   char *aligned;
 
   if(type == IOR_MEMORY_TYPE_GPU_MANAGED_CHECK_CPU || type == IOR_MEMORY_TYPE_GPU_MANAGED_CHECK_GPU){
-#ifdef HAVE_CUDA
-    // use unified memory here to allow drop-in-replacement
-    if (cudaMallocManaged((void**) & buf, size, cudaMemAttachGlobal) != cudaSuccess){
-      ERR("Cannot allocate buffer on GPU");
+#ifdef HAVE_GPU
+    /* use unified memory here to allow drop-in-replacement */
+    if (! gpu_runtime_ok(gpu_runtime_malloc_managed((void**) & buf, size))){
+      ERR("Cannot allocate managed buffer on GPU");
     }
     return buf;
 #else
-    ERR("No CUDA supported, cannot allocate on the GPU");
+    ERR("No GPU runtime supported, cannot allocate managed memory");
 #endif
   }else if(type == IOR_MEMORY_TYPE_GPU_DEVICE_ONLY){
-#ifdef HAVE_GPU_DIRECT
-      if (cudaMalloc((void**) & buf, size) != cudaSuccess){
+#ifdef HAVE_GPU
+      if (! gpu_runtime_ok(gpu_runtime_malloc((void**) & buf, size))){
         ERR("Cannot allocate buffer on GPU");
       }
       return buf;
 #else
-      ERR("No GPUDirect supported, cannot allocate on the GPU");
+      ERR("No GPU runtime supported, cannot allocate on the GPU");
 #endif
     }
 
 #ifdef HAVE_SYSCONF
-  long pageSize = sysconf(_SC_PAGESIZE);
+  size_t pageSize = (size_t) sysconf(_SC_PAGESIZE);
 #else
   size_t pageSize = getpagesize();
 #endif
+  size_t alignment = memoryAlignment ? memoryAlignment : pageSize;
+  size_t total;
 
-  pageMask = pageSize - 1;
-  buf = safeMalloc(size + pageSize + sizeof(void *));
+  pageMask = alignment - 1;
+  total = size + alignment + sizeof(void *);
+  buf = malloc(total);
+  if (buf == NULL)
+    ERR("Could not allocate an aligned buffer");
   /* find the alinged buffer */
   tmp = buf + sizeof(char *);
-  aligned = tmp + pageSize - ((size_t) tmp & pageMask);
+  aligned = tmp + alignment - ((size_t) tmp & pageMask);
+
+#ifdef MADV_HUGEPAGE
+  /* Ask for huge pages before the buffer is first touched: once a page has
+     been faulted in as a base page, only khugepaged can collapse it, which
+     is asynchronous and may not happen at all during a short run.  Only the
+     aligned region is advised -- madvise() requires a page-aligned start,
+     which the malloc()ed pointer is not.  A failure here is not fatal, the
+     buffer is simply backed by base pages. */
+  if (alignment > pageSize)
+    (void) madvise(aligned, size, MADV_HUGEPAGE);
+#endif
+
+  /* matches the zeroing that safeMalloc() used to provide */
+  memset(buf, 0, total);
+
   /* write a pointer to the original malloc()ed buffer into the bytes
      preceding "aligned", so that the aligned buffer can later be free()ed */
   tmp = aligned - sizeof(void *);
@@ -1212,13 +1247,13 @@ void *aligned_buffer_alloc(size_t size, ior_memory_flags type)
 void aligned_buffer_free(void *buf, ior_memory_flags gpu)
 {
   if(gpu){
-#ifdef HAVE_CUDA
-    if (cudaFree(buf) != cudaSuccess){
+#ifdef HAVE_GPU
+    if (! gpu_runtime_ok(gpu_runtime_free(buf))){
       WARN("Cannot free buffer on GPU");
     }
     return;
 #else
-    ERR("No CUDA supported, cannot free on the GPU");
+    ERR("No GPU runtime supported, cannot free on the GPU");
 #endif
   }
   free(*(void **)((char *)buf - sizeof(char *)));

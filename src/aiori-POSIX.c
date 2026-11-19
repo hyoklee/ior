@@ -21,9 +21,7 @@
 
 #ifdef __linux__
 #  include <sys/ioctl.h>          /* necessary for: */
-#  define __USE_GNU               /* O_DIRECT and */
 #  include <fcntl.h>              /* IO operations */
-#  undef __USE_GNU
 #endif                          /* __linux__ */
 
 #include <errno.h>
@@ -53,15 +51,14 @@
 #include "aiori-POSIX.h"
 
 #ifdef HAVE_GPU_DIRECT
-typedef long long loff_t;
-#  include <cuda_runtime.h>
-#  include <cufile.h>
+#  include "gpu_io.h"
 #endif
 
 typedef struct {
   int fd;
 #ifdef HAVE_GPU_DIRECT
-  CUfileHandle_t cf_handle;
+  gpu_io_file_t *gpu_file;
+  int gpu_file_registered;
 #endif
 } posix_fd;
 
@@ -79,22 +76,20 @@ typedef struct {
 #endif
 
 #ifdef HAVE_GPU_DIRECT
-static const char* cuFileGetErrorString(CUfileError_t status){
-  if(IS_CUDA_ERR(status)){
-    return cudaGetErrorString(status.err);
-  }
-  return strerror(status.err);
-}
+static void init_gpu_direct(posix_fd * pfd){
+  char errbuf[256];
+  gpu_io_status_t status;
 
-static void init_cufile(posix_fd * pfd){
-  CUfileDescr_t cf_descr = (CUfileDescr_t){
-    .handle.fd = pfd->fd,
-    .type = CU_FILE_HANDLE_TYPE_OPAQUE_FD
-  };
-  CUfileError_t status = cuFileHandleRegister(& pfd->cf_handle, & cf_descr);
-  if(status.err != CU_FILE_SUCCESS){
-    WARNF("Could not register handle %s", cuFileGetErrorString(status));
+  pfd->gpu_file = NULL;
+  pfd->gpu_file_registered = 0;
+
+  status = gpu_io_register_fd(& pfd->gpu_file, pfd->fd);
+  if(! gpu_io_status_ok(status)){
+    ERRF("Could not register GPU Direct handle: %s",
+         gpu_io_strerror(status, errbuf, sizeof(errbuf)));
   }
+
+  pfd->gpu_file_registered = 1;
 }
 #endif
 
@@ -643,7 +638,7 @@ aiori_fd_t *POSIX_Create(char *testFileName, int flags, aiori_mod_opt_t * param)
 #endif
 #ifdef HAVE_GPU_DIRECT
   if(o->gpuDirect){
-    init_cufile(pfd);
+    init_gpu_direct(pfd);
   }
 #endif
         return (aiori_fd_t*) pfd;
@@ -708,7 +703,7 @@ aiori_fd_t *POSIX_Open(char *testFileName, int flags, aiori_mod_opt_t * param)
 #endif
 #ifdef HAVE_GPU_DIRECT
         if(o->gpuDirect){
-          init_cufile(pfd);
+          init_gpu_direct(pfd);
         }
 #endif
         return (aiori_fd_t*) pfd;
@@ -766,16 +761,25 @@ static IOR_offset_t POSIX_Xfer(int access, aiori_fd_t *file, IOR_size_t * buffer
                         }
 #ifdef HAVE_GPU_DIRECT
                         if(o->gpuDirect){
-                          rc = cuFileWrite(pfd->cf_handle, ptr, remaining, offset + mem_offset, mem_offset);
+                          gpu_io_result_t gio_res;
+                          char errbuf[256];
+                          gio_res = gpu_io_write(pfd->gpu_file, buffer, remaining,
+                                                  offset + mem_offset, mem_offset);
+                          rc = gio_res.nbytes;
+                          if(rc < 0){
+                            WARNF("gpu_io_write(%d, %p, %lld) failed: %s",
+                                  fd, (void*)ptr, remaining,
+                                  gpu_io_strerror(gio_res.status, errbuf, sizeof(errbuf)));
+                          }
                         }else{
 #endif
                           rc = write(fd, ptr, remaining);
+                          if (rc < 0){
+                            WARNF("write(%d, %p, %lld) failed %s", fd, (void*)ptr, remaining, strerror(errno));
+                          }
 #ifdef HAVE_GPU_DIRECT
                         }
 #endif
-                        if (rc < 0){
-                          WARNF("write(%d, %p, %lld) failed %s", fd, (void*)ptr, remaining, strerror(errno));
-                        }
                         if (hints->fsyncPerWrite == TRUE){
                           POSIX_Fsync((aiori_fd_t*) &fd, param);
                         }
@@ -787,7 +791,16 @@ static IOR_offset_t POSIX_Xfer(int access, aiori_fd_t *file, IOR_size_t * buffer
                         }
 #ifdef HAVE_GPU_DIRECT
                         if(o->gpuDirect){
-                          rc = cuFileRead(pfd->cf_handle, ptr, remaining, offset + mem_offset, mem_offset);
+                          gpu_io_result_t gio_res;
+                          char errbuf[256];
+                          gio_res = gpu_io_read(pfd->gpu_file, buffer, remaining,
+                                                 offset + mem_offset, mem_offset);
+                          rc = gio_res.nbytes;
+                          if(rc < 0){
+                            WARNF("gpu_io_read(%d, %p, %lld) failed: %s",
+                                  fd, (void*)ptr, remaining,
+                                  gpu_io_strerror(gio_res.status, errbuf, sizeof(errbuf)));
+                          }
                         }else{
 #endif
                           rc = read(fd, ptr, remaining);
@@ -800,7 +813,10 @@ static IOR_offset_t POSIX_Xfer(int access, aiori_fd_t *file, IOR_size_t * buffer
                         }
                                 
                         if (rc < 0){
-                          WARNF("read(%d, %p, %lld) failed %s", fd, (void*)ptr, remaining, strerror(errno));
+#ifdef HAVE_GPU_DIRECT
+                          if(!o->gpuDirect)
+#endif
+                            WARNF("read(%d, %p, %lld) failed %s", fd, (void*)ptr, remaining, strerror(errno));
                           return length - remaining;
                         }
                 }
@@ -815,7 +831,9 @@ static IOR_offset_t POSIX_Xfer(int access, aiori_fd_t *file, IOR_size_t * buffer
                           return length - remaining;
                         }
                 }
-                assert(rc >= 0);
+                if (rc < 0) {
+                        return length - remaining;
+                }
                 assert(rc <= remaining);
                 remaining -= rc;
                 ptr += rc;
@@ -868,8 +886,8 @@ void POSIX_Close(aiori_fd_t *afd, aiori_mod_opt_t * param)
         posix_options_t * o = (posix_options_t*) param;
         int fd = ((posix_fd*) afd)->fd;
 #ifdef HAVE_GPU_DIRECT
-        if(o->gpuDirect){
-          cuFileHandleDeregister(((posix_fd*) afd)->cf_handle);
+        if(o->gpuDirect && ((posix_fd*) afd)->gpu_file_registered){
+          gpu_io_deregister_fd(& ((posix_fd*) afd)->gpu_file);
         }
 #endif
         if (close(fd) != 0){
@@ -919,14 +937,28 @@ IOR_offset_t POSIX_GetFileSize(aiori_mod_opt_t * test, char *testFileName)
         return (aggFileSizeFromStat);
 }
 
+#ifdef HAVE_GPU_DIRECT
+static unsigned int posix_init_count;
+#endif
+
 void POSIX_Initialize(aiori_mod_opt_t * options){
 #ifdef HAVE_GPU_DIRECT
-  CUfileError_t err = cuFileDriverOpen();
+    ++posix_init_count;
 #endif
 }
 
 void POSIX_Finalize(aiori_mod_opt_t * options){
 #ifdef HAVE_GPU_DIRECT
-  CUfileError_t err = cuFileDriverClose();
+    gpu_io_status_t st;
+    char errbuf[256];
+
+    if (posix_init_count == 0)
+        return;
+    if (--posix_init_count != 0)
+        return;
+    st = gpu_io_shutdown();
+    if (!gpu_io_status_ok(st))
+        ERRF("GPU I/O shutdown failed: %s",
+             gpu_io_strerror(st, errbuf, sizeof(errbuf)));
 #endif
 }
